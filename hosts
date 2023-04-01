@@ -1,4 +1,4 @@
 [lb01]
-keepalivedlb1 ansible_host=192.168.0.139 #replace with your own
+keepalivedlb1 ansible_host=192.168.0.139 #replace with your env
 [lb02]
-keepalivedlb2 ansible_host=192.168.0.151 #replace with your own
+keepalivedlb2 ansible_host=192.168.0.151 #replace with your env
