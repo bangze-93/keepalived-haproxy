@@ -1,4 +1,5 @@
-- name: Keepalived X Haproxy
+---
+- name: Keepalived X Haproxy X Nginx Web Server on Docker
   hosts: all
   become: true
   become_method: sudo
@@ -10,14 +11,11 @@
         state: present
         update_cache: true
 
-    - name: Install common packages
+    - name: Install chrony
       apt:
+        name: chrony
         state: present
         update_cache: true
-        pkg:
-          - chrony
-          - keepalived
-          - haproxy
 
     - name: Set timezone
       timezone:
@@ -29,6 +27,15 @@
         state: restarted
         enabled: true
 
+    - name: Install keepalived and haproxy
+      apt:
+        state: present
+        update_cache: true
+        pkg:
+          - keepalived
+          - haproxy
+      when: inventory_hostname in groups['keepalived']
+
     - name: Enable IP forwarding
       copy:
         dest: "/etc/sysctl.conf"
@@ -36,46 +43,99 @@
           net.ipv4.ip_forward=1
           net.ipv4.ip_nonlocal_bind=1
         mode: 0644
+        backup: true
+      when: inventory_hostname in groups['keepalived']
 
     - name: Reload sysctl
       command: sysctl -p
+      register: output
+      changed_when: output.rc != 1
+      when: inventory_hostname in groups['keepalived']
 
-#======================================================================================#
-
-- name: Set config file keepalived.conf LB1
-  hosts: lb01
-  become: true
-  become_method: sudo
-  tasks:
-
-    - name: Create keepalived.conf
-      template: 
-        src: keepalived01.conf 
+    - name: Create keepalived.conf for keepalived1
+      template:
+        src: keepalived01.conf
         dest: /etc/keepalived/keepalived.conf
         mode: 0644
-      
-    - name: Restart and enable keeplived
-      service:
-        name: keepalived
-        state: restarted
-        enabled: true
+      when: ansible_hostname == 'keepalived1'
 
-#======================================================================================#
-
-- name: Set config file keepalived.conf LB2
-  hosts: lb02
-  become: true
-  become_method: sudo
-  tasks:
-    
-    - name: Create keepalived.conf
+    - name: Create keepalived.conf for keepalived2
       template:
         src: keepalived02.conf
         dest: /etc/keepalived/keepalived.conf
         mode: 0644
-        
-    - name: Restart and enable keeplived
+      when: ansible_hostname == 'keepalived2'
+
+    - name: Create haproxy.cfg file
+      template:
+        src: haproxy.cfg
+        dest: /etc/haproxy/haproxy.cfg
+        mode: 0644
+        backup: true
+      when: inventory_hostname in groups['keepalived']
+
+    - name: Restart, enable keepalived and haproxy
       service:
-        name: keepalived
+        name: "{{ item }}"
         state: restarted
         enabled: true
+      loop:
+        - keepalived
+        - haproxy
+      when: inventory_hostname in groups['keepalived']
+
+    - name: Install require dependencies for docker
+      apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - software-properties-common
+          - gnupg-agent
+          - python3-pip
+          - python3-docker
+        state: present
+        update_cache: true
+      when: inventory_hostname in groups['webserver']
+
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      when: inventory_hostname in groups['webserver']
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+        state: present
+      when: inventory_hostname in groups['webserver']
+
+    - name: Install Docker
+      apt:
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+      when: inventory_hostname in groups['webserver']
+
+    - name: Enable and restart docker
+      service:
+        name: docker
+        state: restarted
+        enabled: true
+      when: inventory_hostname in groups['webserver']
+
+    - name: Deploy nginx docker container
+      docker_container:
+        container_default_behavior: no_defaults
+        image: nginx:stable
+        name: nginx-web-server
+        state: started
+        restart: true
+        ports:
+          - "81:80"
+      when: inventory_hostname in groups['webserver']
+...
