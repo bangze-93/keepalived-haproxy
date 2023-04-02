@@ -153,5 +153,5 @@
         restart_policy: always
         ports:
           - "81:80"
-      when: inventory_hostname in groups['webserverdocker']
+      when: inventory_hostname in groups['webserver']
 ...
