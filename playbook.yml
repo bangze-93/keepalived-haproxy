@@ -5,11 +5,13 @@
   become_method: sudo
   tasks:
 
-    - name: Update system
+    - name: Update and upgrade apt packages
       apt:
-        name: "*"
+        upgrade: 'yes'
         state: present
+        force_apt_get: true
         update_cache: true
+        cache_valid_time: 86400
 
     - name: Install chrony
       apt:
@@ -26,6 +28,7 @@
         name: chrony
         state: restarted
         enabled: true
+      run_once: true
 
     - name: Install keepalived and haproxy
       apt:
@@ -45,12 +48,13 @@
         mode: 0644
         backup: true
       when: inventory_hostname in groups['keepalived']
+      register: sysctl_conf
 
     - name: Reload sysctl
       command: sysctl -p
       register: output
       changed_when: output.rc != 1
-      when: inventory_hostname in groups['keepalived']
+      when: inventory_hostname in groups['keepalived'] and sysctl_conf.changed
 
     - name: Create keepalived.conf for keepalived1
       template:
@@ -58,6 +62,7 @@
         dest: /etc/keepalived/keepalived.conf
         mode: 0644
       when: ansible_hostname == 'keepalived1'
+      register: keepalived01_conf
 
     - name: Create keepalived.conf for keepalived2
       template:
@@ -65,6 +70,14 @@
         dest: /etc/keepalived/keepalived.conf
         mode: 0644
       when: ansible_hostname == 'keepalived2'
+      register: keepalived02_conf
+
+    - name: Restart and enabled keepalived
+      service:
+        name: keepalived
+        state: restarted
+        enabled: true
+      when: (ansible_hostname == 'keepalived1' and keepalived01_conf.changed) or (ansible_hostname == 'keepalived2' and keepalived02_conf.changed)
 
     - name: Create haproxy.cfg file
       template:
@@ -73,16 +86,14 @@
         mode: 0644
         backup: true
       when: inventory_hostname in groups['keepalived']
+      register: haproxy_cfg
 
-    - name: Restart, enable keepalived and haproxy
+    - name: Restart and enabled haproxy
       service:
-        name: "{{ item }}"
+        name: haproxy
         state: restarted
         enabled: true
-      loop:
-        - keepalived
-        - haproxy
-      when: inventory_hostname in groups['keepalived']
+      when: inventory_hostname in groups['keepalived'] and haproxy_cfg.changed
 
     - name: Install require dependencies for docker
       apt:
@@ -91,6 +102,7 @@
           - ca-certificates
           - software-properties-common
           - gnupg-agent
+          - gnupg
           - python3-pip
           - python3-docker
         state: present
@@ -126,6 +138,7 @@
         name: docker
         state: restarted
         enabled: true
+      run_once: true
       when: inventory_hostname in groups['webserver']
 
     - name: Deploy nginx docker container
@@ -135,6 +148,7 @@
         name: nginx-web-server
         state: started
         restart: true
+        restart_policy: always
         ports:
           - "81:80"
       when: inventory_hostname in groups['webserver']
