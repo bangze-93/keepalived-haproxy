@@ -107,7 +107,13 @@
         state: present
         update_cache: true
       when: inventory_hostname in groups['webserver']
-
+      
+    - name: Create keyrings directory if it does not exist
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+        
     - name: Add Docker GPG apt Key
       apt_key:
         url: https://download.docker.com/linux/ubuntu/gpg
