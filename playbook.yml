@@ -60,7 +60,7 @@
         src: keepalived01.conf
         dest: /etc/keepalived/keepalived.conf
         mode: 0644
-      when: ansible_hostname == 'keepalived1'
+      when: inventory_hostname == 'keepalived1'
       register: keepalived01_conf
 
     - name: Create keepalived.conf for keepalived2
@@ -68,7 +68,7 @@
         src: keepalived02.conf
         dest: /etc/keepalived/keepalived.conf
         mode: 0644
-      when: ansible_hostname == 'keepalived2'
+      when: inventory_hostname == 'keepalived2'
       register: keepalived02_conf
 
     - name: Restart and enabled keepalived
@@ -76,7 +76,7 @@
         name: keepalived
         state: restarted
         enabled: true
-      when: (ansible_hostname == 'keepalived1' and keepalived01_conf.changed) or (ansible_hostname == 'keepalived2' and keepalived02_conf.changed)
+      when: (inventory_hostname == 'keepalived1' and keepalived01_conf.changed) or (inventory_hostname == 'keepalived2' and keepalived02_conf.changed)
 
     - name: Create haproxy.cfg file
       template:
