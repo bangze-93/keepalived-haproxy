@@ -11,6 +11,6 @@
 ``` bash
 ansible-playbook -i hosts playbook.yml --user ubuntu
 ``` 
-replace [user] with your server user that has sudo privillage
+replace user [ubuntu] with your server user that has sudo privillage
 #### Open your favorite browser and access
 http://192.168.1.121
