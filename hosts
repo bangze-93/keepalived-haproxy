@@ -1,7 +1,7 @@
 [keepalived]
-keepalived1 ansible_host=192.168.1.101
-keepalived2 ansible_host=192.168.1.102
+Keepalived1 ansible_host=192.168.200.37
+Keepalived2 ansible_host=192.168.200.38
 
 [webserver]
-webserver1 ansible_host=192.168.1.103
-webserver2 ansible_host=192.168.1.104
+Webserver1 ansible_host=192.168.200.39
+Webserver2 ansible_host=192.168.200.40

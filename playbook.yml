@@ -3,99 +3,97 @@
   hosts: all
   become: true
   become_method: sudo
+  vars:
+    - virtual_ip: 192.168.200.36
+    - lb1_ip: 192.168.200.37
+    - lb2_ip: 192.168.200.38
+    - web1_ip: 192.168.200.39
+    - web2_ip: 192.168.200.40
+    - interface: "{{ ansible_default_ipv4.interface }}"
   tasks:
-
     - name: Update and upgrade apt packages
-      apt:
+      ansible.builtin.apt:
         upgrade: 'yes'
         state: present
         force_apt_get: true
         update_cache: true
         cache_valid_time: 86400
 
-    - name: Install chrony
-      apt:
-        name: chrony
-        state: present
-        update_cache: true
-
     - name: Set timezone
-      timezone:
+      ansible.builtin.timezone:
         name: Asia/Jakarta
 
-    - name: Enable and restart chrony
-      service:
-        name: chrony
-        state: restarted
-        enabled: true
-
-    - name: Install keepalived and haproxy
-      apt:
+    - name: Install required packages
+      ansible.builtin.apt:
         state: present
         update_cache: true
         pkg:
           - keepalived
           - haproxy
+          - chrony
+          - net-tools
+      notify: Restart chrony
       when: inventory_hostname in groups['keepalived']
 
     - name: Enable IP forwarding
-      copy:
-        dest: "/etc/sysctl.conf"
-        content: |
-          net.ipv4.ip_forward=1
-          net.ipv4.ip_nonlocal_bind=1
+      ansible.builtin.copy:
+        src: keepalived.conf
+        dest: "/etc/sysctl.d/keepalived.conf"
         mode: 0644
         backup: true
+      notify: Reload sysctl
       when: inventory_hostname in groups['keepalived']
-      register: sysctl_conf
-
-    - name: Reload sysctl
-      command: sysctl -p
-      register: output
-      changed_when: output.rc != 1
-      when: inventory_hostname in groups['keepalived'] and sysctl_conf.changed
 
     - name: Create keepalived.conf for keepalived1
-      template:
+      ansible.builtin.template:
         src: keepalived01.conf
         dest: /etc/keepalived/keepalived.conf
         mode: 0644
-      when: inventory_hostname == 'keepalived1'
-      register: keepalived01_conf
+        backup: true
+      when: inventory_hostname == 'Keepalived1'
+      notify: Restart keepalived
 
     - name: Create keepalived.conf for keepalived2
-      template:
+      ansible.builtin.template:
         src: keepalived02.conf
         dest: /etc/keepalived/keepalived.conf
         mode: 0644
-      when: inventory_hostname == 'keepalived2'
-      register: keepalived02_conf
-
-    - name: Restart and enabled keepalived
-      service:
-        name: keepalived
-        state: restarted
-        enabled: true
-      when: (inventory_hostname == 'keepalived1' and keepalived01_conf.changed) or (inventory_hostname == 'keepalived2' and keepalived02_conf.changed)
+        backup: true
+      when: inventory_hostname == 'Keepalived2'
+      notify: Restart keepalived
 
     - name: Create haproxy.cfg file
-      template:
+      ansible.builtin.template:
         src: haproxy.cfg
         dest: /etc/haproxy/haproxy.cfg
         mode: 0644
         backup: true
+      notify: Restart haproxy
       when: inventory_hostname in groups['keepalived']
-      register: haproxy_cfg
 
-    - name: Restart and enabled haproxy
-      service:
-        name: haproxy
-        state: restarted
-        enabled: true
-      when: inventory_hostname in groups['keepalived'] and haproxy_cfg.changed
+    - name: Create keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+      when: inventory_hostname in groups['webserver']
 
-    - name: Install required dependencies for docker
-      apt:
+    - name: Add Docker GPG apt Key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        keyring: /etc/apt/keyrings/docker.gpg
+        state: present
+      when: inventory_hostname in groups['webserver']
+
+    - name: Add Docker Repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        filename: docker
+        state: present
+      when: inventory_hostname in groups['webserver']
+
+    - name: Install required packages for docker
+      ansible.builtin.apt:
         pkg:
           - apt-transport-https
           - ca-certificates
@@ -104,33 +102,6 @@
           - gnupg
           - python3-pip
           - python3-docker
-        state: present
-        update_cache: true
-      when: inventory_hostname in groups['webserver']
-      
-    - name: Create keyrings directory if it does not exist
-      file:
-        path: /etc/apt/keyrings
-        state: directory
-        mode: '0755'
-        
-    - name: Add Docker GPG apt Key
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        keyring: /etc/apt/keyrings/docker.gpg
-        state: present
-      when: inventory_hostname in groups['webserver']
-
-    - name: Add Docker Repository
-      apt_repository:
-        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
-        filename: docker
-        state: present
-      when: inventory_hostname in groups['webserver']
-
-    - name: Install Docker
-      apt:
-        pkg:
           - docker-ce
           - docker-ce-cli
           - containerd.io
@@ -138,17 +109,14 @@
           - docker-compose-plugin
         state: present
         update_cache: true
+      notify: Restart docker
       when: inventory_hostname in groups['webserver']
 
-    - name: Enable and restart docker
-      service:
-        name: docker
-        state: restarted
-        enabled: true
-      when: inventory_hostname in groups['webserver']
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
 
     - name: Deploy nginx docker container
-      docker_container:
+      community.docker.docker_container:
         container_default_behavior: no_defaults
         image: nginx:stable
         name: nginx-web-server
@@ -158,4 +126,32 @@
         ports:
           - "81:80"
       when: inventory_hostname in groups['webserver']
+
+  handlers:
+    - name: Restart docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
+        enabled: true
+
+    - name: Restart chrony
+      ansible.builtin.service:
+        name: chrony
+        state: restarted
+        enabled: true
+
+    - name: Reload sysctl
+      ansible.builtin.command: sysctl --system
+
+    - name: Restart keepalived
+      ansible.builtin.service:
+        name: keepalived
+        state: restarted
+        enabled: true
+
+    - name: Restart haproxy
+      ansible.builtin.service:
+        name: haproxy
+        state: restarted
+        enabled: true
 ...
