@@ -13,4 +13,4 @@ ansible-playbook -i hosts playbook.yml --user ubuntu
 ``` 
 replace user [ubuntu] with your server user 
 #### Open your favorite browser and access
-http://192.168.1.121
+http://192.168.200.36
