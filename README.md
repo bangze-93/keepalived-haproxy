@@ -1,6 +1,6 @@
 # Install Keepalived x Haproxy with Ansible on Ubuntu 20
-### Replace with your env
-#### <i> playbook.yaml </i>
+### Adjust with your env
+- #### <i> playbook.yaml </i>
 ```
 vars:
     vip: 192.168.200.36
@@ -8,7 +8,7 @@ vars:
     backup_ip: "{{ hostvars['backup']['ansible_host'] }}"
     interface: "{{ ansible_default_ipv4.interface }}"
 ```
-#### <i> hosts </i>
+- #### <i> hosts </i>
 ```
 [nodes]
 master ansible_host=192.168.200.37
@@ -20,7 +20,7 @@ ansible_user=user
 ansible_ssh_pass=passwd
 ansible_become_password=passwd
 ```
-### Run this command
+### Run playbook
 ``` bash
 ansible-playbook -i hosts playbook.yaml
 ``` 
