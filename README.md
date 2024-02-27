@@ -24,6 +24,4 @@ ansible_become_password=passwd
 ``` bash
 ansible-playbook -i hosts playbook.yaml
 ``` 
- 
-### Open your favorite browser and access
-http://192.168.200.36
+
