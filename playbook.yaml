@@ -1,0 +1,62 @@
+---
+- name: Keepalived X Haproxy
+  hosts: all
+  become: true
+  become_method: sudo
+  vars:
+    vip: 192.168.200.36
+    master_ip: "{{ hostvars['master']['ansible_host'] }}"
+    backup_ip: "{{ hostvars['backup']['ansible_host'] }}"
+    interface: "{{ ansible_default_ipv4.interface }}"
+  tasks:
+    - name: Update and upgrade apt packages
+      ansible.builtin.apt:
+        upgrade: 'yes'
+        state: present
+        force_apt_get: true
+        update_cache: true
+        cache_valid_time: 86400
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        state: present
+        update_cache: true
+        pkg:
+          - keepalived
+          - haproxy
+          - net-tools
+
+    - name: Enable IP forwarding
+      ansible.builtin.copy:
+        src: keepalived.conf
+        dest: "/etc/sysctl.d/keepalived.conf"
+        mode: 0644
+
+    - name: Create keepalived.conf for master
+      ansible.builtin.template:
+        src: master.conf
+        dest: /etc/keepalived/keepalived.conf
+        mode: 0644
+        backup: true
+      when: inventory_hostname == 'master'
+
+    - name: Create keepalived.conf for backup
+      ansible.builtin.template:
+        src: backup.conf
+        dest: /etc/keepalived/keepalived.conf
+        mode: 0644
+        backup: true
+      when: inventory_hostname == 'backup'
+
+    - name: Reload sysctl
+      ansible.builtin.command: sysctl --system
+
+    - name: Restart keepalived and haproxy
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: restarted
+        enabled: true
+      loop:
+        - keepalived
+        - haproxy
+...
